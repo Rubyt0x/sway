@@ -15,8 +15,9 @@ fn ir_to_ir_tests() {
                 // Run the tests!
                 //
                 // We currently choose a single pass based on the test file name, but eventually we
-                // should use a comment within the test file to invoke `lit`.
+                // should use a comment within the test file to invoke `FileCheck`.
 
+                println!("--- TESTING: {}", path.display());
                 let path_str = path.file_name().unwrap().to_string_lossy();
                 if path_str.starts_with("inline") {
                     test_inline(path);
@@ -25,14 +26,14 @@ fn ir_to_ir_tests() {
                 } else {
                     panic!(
                         "File which doesn't match valid passes: {:?}",
-                        path.file_name().unwrap_or_else(|| path.as_os_str())
+                        path.file_name().unwrap_or(path.as_os_str())
                     );
                 }
             }
             Some("out_ir") => (),
             _ => panic!(
                 "File with invalid extension in tests dir: {:?}",
-                path.file_name().unwrap_or_else(|| path.as_os_str())
+                path.file_name().unwrap_or(path.as_os_str())
             ),
         }
     }

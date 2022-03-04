@@ -94,6 +94,14 @@ impl<T> From<Result<T, TypeError>> for CompileResult<T> {
 }
 
 impl<T> CompileResult<T> {
+    pub fn new(value: Option<T>, warnings: Vec<CompileWarning>, errors: Vec<CompileError>) -> Self {
+        CompileResult {
+            value,
+            warnings,
+            errors,
+        }
+    }
+
     pub fn ok(
         mut self,
         warnings: &mut Vec<CompileWarning>,
@@ -384,6 +392,8 @@ pub enum CompileError {
         span: Span,
         err: pest::error::Error<Rule>,
     },
+    #[error("Error parsing input: {err:?}")]
+    ParseError { span: Span, err: String },
     #[error(
         "Invalid top-level item: {0:?}. A program should consist of a contract, script, or \
          predicate at the top level."
@@ -716,8 +726,8 @@ pub enum CompileError {
     MoreThanOneEnumInstantiator { span: Span, ty: String },
     #[error("This enum variant represents the unit type, so it should not be instantiated with any value.")]
     UnnecessaryEnumInstantiator { span: Span },
-    #[error("Trait \"{name}\" does not exist in this scope.")]
-    TraitNotFound { name: Ident, span: Span },
+    #[error("Cannot find trait \"{name}\" in this scope.")]
+    TraitNotFound { name: String, span: Span },
     #[error("This expression is not valid on the left hand side of a reassignment.")]
     InvalidExpressionOnLhs { span: Span },
     #[error(
@@ -827,6 +837,20 @@ pub enum CompileError {
         trait_name: String,
         span: Span,
     },
+    #[error("The trait \"{supertrait_name}\" is not implemented for type \"{type_name}\"")]
+    SupertraitImplMissing {
+        supertrait_name: String,
+        type_name: String,
+        span: Span,
+    },
+    #[error(
+        "Implementation of trait \"{supertrait_name}\" is required by this bound in \"{trait_name}\""
+    )]
+    SupertraitImplRequired {
+        supertrait_name: String,
+        trait_name: String,
+        span: Span,
+    },
 }
 
 impl std::convert::From<TypeError> for CompileError {
@@ -923,6 +947,7 @@ impl CompileError {
             Unimplemented(_, span) => span,
             TypeError(err) => err.internal_span(),
             ParseFailure { span, .. } => span,
+            ParseError { span, .. } => span,
             InvalidTopLevelItem(_, span) => span,
             Internal(_, span) => span,
             InternalOwned(_, span) => span,
@@ -1030,6 +1055,8 @@ impl CompileError {
             AsteriskWithAlias { span, .. } => span,
             AbiAsSupertrait { span, .. } => span,
             NameDefinedMultipleTimesForTrait { span, .. } => span,
+            SupertraitImplMissing { span, .. } => span,
+            SupertraitImplRequired { span, .. } => span,
         }
     }
 

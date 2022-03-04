@@ -12,10 +12,7 @@ use crate::{
 
 use sway_types::span::{join_spans, Span};
 
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
-};
+use std::sync::Arc;
 
 pub(crate) use crate::semantic_analysis::ast_node::declaration::ReassignmentLhs;
 
@@ -144,7 +141,6 @@ impl TypedAstNode {
             self_type,
             build_config,
             dead_code_graph,
-            dependency_graph,
             opts,
             ..
         } = arguments;
@@ -173,7 +169,6 @@ impl TypedAstNode {
                 self_type,
                 build_config,
                 dead_code_graph,
-                dependency_graph,
                 mode: Mode::NonAbi,
                 opts,
             })
@@ -204,13 +199,7 @@ impl TypedAstNode {
                     // Import the file, parse it, put it in the namespace under the module name (alias or
                     // last part of the import by default)
                     let _ = check!(
-                        import_new_file(
-                            a,
-                            namespace,
-                            build_config,
-                            dead_code_graph,
-                            dependency_graph
-                        ),
+                        import_new_file(a, namespace, build_config, dead_code_graph),
                         return err(warnings, errors),
                         warnings,
                         errors
@@ -236,7 +225,6 @@ impl TypedAstNode {
                                     });
                                     insert_type(TypeInfo::ErrorRecovery)
                                 });
-
                             let result = {
                                 TypedExpression::type_check(TypeCheckArguments {
                                     checkee: body,
@@ -248,7 +236,6 @@ impl TypedAstNode {
                                     self_type,
                                     build_config,
                                     dead_code_graph,
-                                    dependency_graph,
                                     mode: Mode::NonAbi,
                                     opts,
                                 })
@@ -328,7 +315,6 @@ impl TypedAstNode {
                                     build_config,
                                     dead_code_graph,
                                     mode: Mode::NonAbi,
-                                    dependency_graph,
                                     opts
                                 }),
                                 error_recovery_function_declaration(fn_decl),
@@ -344,90 +330,36 @@ impl TypedAstNode {
                         Declaration::TraitDeclaration(TraitDeclaration {
                             name,
                             interface_surface,
-                            mut methods,
+                            methods,
                             type_parameters,
                             supertraits,
                             visibility,
                         }) => {
                             // type check the interface surface
-                            let mut interface_surface = check!(
+                            let interface_surface = check!(
                                 type_check_interface_surface(interface_surface, namespace),
                                 return err(warnings, errors),
                                 warnings,
                                 errors
                             );
 
-                            // A HashSet to keep track of the function names available to the
-                            // trait. Mainly used for error checking currently.
-                            let mut trait_method_names = HashSet::new();
-                            for interface in &interface_surface.clone() {
-                                let name = interface.name.span().span.as_str().to_string();
-                                trait_method_names.insert(name);
-                            }
-                            for method in &methods.clone() {
-                                let name = method.name.span().span.as_str().to_string();
-                                trait_method_names.insert(name);
-                            }
-                            for supertrait in supertraits {
+                            // Error checking. Make sure that each supertrait exists and that none
+                            // of the supertraits are actually an ABI declaration
+                            for supertrait in &supertraits {
                                 match namespace
                                     .get_call_path(&supertrait.name)
                                     .ok(&mut warnings, &mut errors)
                                 {
-                                    Some(TypedDeclaration::TraitDeclaration(supertrait_decl)) => {
-                                        // Augment the interface of the trait with the interface of
-                                        // each supertrait
-                                        let mut supertrait_surface =
-                                            supertrait_decl.interface_surface;
-                                        for supertrait_interface in &supertrait_surface {
-                                            let supertrait_interface_span =
-                                                supertrait_interface.name.span();
-                                            let supertrait_interface_name =
-                                                supertrait_interface_span.span.as_str().to_string();
-                                            if trait_method_names
-                                                .contains(&supertrait_interface_name)
-                                            {
-                                                errors.push(
-                                                    CompileError::NameDefinedMultipleTimesForTrait {
-                                                        fn_name: supertrait_interface_name,
-                                                        trait_name: name.span().span.as_str().to_string(),
-                                                        span: supertrait_interface_span.clone(),
-                                                    },
-                                                );
-                                            } else {
-                                                trait_method_names
-                                                    .insert(supertrait_interface_name);
-                                            }
-                                        }
-                                        interface_surface.append(&mut supertrait_surface);
-
-                                        // Augment the set of methods of the trait with the set of
-                                        // methods of each supertrait
-                                        let mut supertrait_methods = supertrait_decl.methods;
-                                        for supertrait_method in &supertrait_methods {
-                                            let supertrait_method_span =
-                                                supertrait_method.name.span();
-                                            let supertrait_method_name =
-                                                supertrait_method_span.span.as_str().to_string();
-                                            if trait_method_names.contains(&supertrait_method_name)
-                                            {
-                                                errors.push(
-                                                    CompileError::NameDefinedMultipleTimesForTrait {
-                                                        fn_name: supertrait_method_name,
-                                                        trait_name: name.span().span.as_str().to_string(),
-                                                        span: supertrait_method_span.clone(),
-                                                    },
-                                                );
-                                            } else {
-                                                trait_method_names.insert(supertrait_method_name);
-                                            }
-                                        }
-                                        methods.append(&mut supertrait_methods);
-                                    }
-                                    _ => {
+                                    Some(TypedDeclaration::TraitDeclaration(_)) => (),
+                                    Some(TypedDeclaration::AbiDeclaration(_)) => {
                                         errors.push(CompileError::AbiAsSupertrait {
                                             span: name.span().clone(),
-                                        });
+                                        })
                                     }
+                                    _ => errors.push(CompileError::TraitNotFound {
+                                        name: supertrait.name.span().as_str().to_string(),
+                                        span: name.span().clone(),
+                                    }),
                                 }
                             }
 
@@ -438,6 +370,7 @@ impl TypedAstNode {
                                 CallPath {
                                     prefixes: vec![],
                                     suffix: name.clone(),
+                                    is_absolute: false,
                                 },
                                 TypeInfo::SelfType,
                                 interface_surface
@@ -454,7 +387,6 @@ impl TypedAstNode {
                                     insert_type(TypeInfo::SelfType),
                                     build_config,
                                     dead_code_graph,
-                                    dependency_graph
                                 ),
                                 vec![],
                                 warnings,
@@ -466,6 +398,7 @@ impl TypedAstNode {
                                     interface_surface,
                                     methods,
                                     type_parameters,
+                                    supertraits,
                                     visibility,
                                 });
                             namespace.insert(name, trait_decl.clone());
@@ -481,7 +414,6 @@ impl TypedAstNode {
                                         self_type,
                                         build_config,
                                         dead_code_graph,
-                                        dependency_graph,
                                         // this is unused by `reassignment`
                                         return_type_annotation: insert_type(TypeInfo::Unknown),
                                         help_text: Default::default(),
@@ -502,7 +434,6 @@ impl TypedAstNode {
                                 crate_namespace,
                                 build_config,
                                 dead_code_graph,
-                                dependency_graph,
                                 opts,
                             ),
                             return err(warnings, errors),
@@ -517,9 +448,12 @@ impl TypedAstNode {
                             block_span,
                             ..
                         }) => {
+                            // Resolve the Self type as it's most likely still 'Custom' and use the
+                            // resolved type for self instead.
                             let implementing_for_type_id =
                                 namespace.resolve_type_without_self(&type_implementing_for);
-                            // check, if this is a custom type, if it is in scope or a generic.
+                            let type_implementing_for = look_up_type_id(implementing_for_type_id);
+
                             let mut functions_buf: Vec<TypedFunctionDeclaration> = vec![];
                             if !type_arguments.is_empty() {
                                 errors.push(CompileError::Internal(
@@ -559,7 +493,6 @@ impl TypedAstNode {
                                         build_config,
                                         dead_code_graph,
                                         mode: Mode::NonAbi,
-                                        dependency_graph,
                                         opts
                                     }),
                                     continue,
@@ -570,6 +503,7 @@ impl TypedAstNode {
                             let trait_name = CallPath {
                                 prefixes: vec![],
                                 suffix: Ident::new_with_override("r#Self", block_span.clone()),
+                                is_absolute: false,
                             };
                             namespace.insert_trait_implementation(
                                 trait_name.clone(),
@@ -663,7 +597,6 @@ impl TypedAstNode {
                                     self_type,
                                     build_config,
                                     dead_code_graph,
-                                    dependency_graph
                                 ),
                                 vec![],
                                 warnings,
@@ -736,7 +669,6 @@ impl TypedAstNode {
                             self_type,
                             build_config,
                             dead_code_graph,
-                            dependency_graph,
                             mode: Mode::NonAbi,
                             opts
                         }),
@@ -760,7 +692,6 @@ impl TypedAstNode {
                                 self_type,
                                 build_config,
                                 dead_code_graph,
-                                dependency_graph,
                                 mode: Mode::NonAbi,
                                 opts
                             }),
@@ -781,7 +712,6 @@ impl TypedAstNode {
                             self_type,
                             build_config,
                             dead_code_graph,
-                            dependency_graph,
                             mode: Mode::NonAbi,
                             opts,
                         }),
@@ -803,7 +733,6 @@ impl TypedAstNode {
                             self_type,
                             build_config,
                             dead_code_graph,
-                            dependency_graph,
                             mode: Mode::NonAbi,
                             opts
                         }),
@@ -824,7 +753,6 @@ impl TypedAstNode {
                             self_type,
                             build_config,
                             dead_code_graph,
-                            dependency_graph,
                             mode: Mode::NonAbi,
                             opts,
                         }),
@@ -874,7 +802,6 @@ fn import_new_file(
     namespace: NamespaceRef,
     build_config: &BuildConfig,
     dead_code_graph: &mut ControlFlowGraph,
-    dependency_graph: &mut HashMap<String, HashSet<String>>,
 ) -> CompileResult<()> {
     let mut warnings = vec![];
     let mut errors = vec![];
@@ -924,13 +851,7 @@ fn import_new_file(
         namespace: module,
         ..
     } = check!(
-        crate::compile_inner_dependency(
-            file_as_string,
-            dep_namespace,
-            dep_config,
-            dead_code_graph,
-            dependency_graph
-        ),
+        crate::compile_inner_dependency(file_as_string, dep_namespace, dep_config, dead_code_graph),
         return err(warnings, errors),
         warnings,
         errors
@@ -956,7 +877,6 @@ fn reassignment(
         self_type,
         build_config,
         dead_code_graph,
-        dependency_graph,
         opts,
         ..
     } = arguments;
@@ -1011,7 +931,6 @@ fn reassignment(
                     self_type,
                     build_config,
                     dead_code_graph,
-                    dependency_graph,
                     mode: Mode::NonAbi,
                     opts
                 }),
@@ -1050,7 +969,6 @@ fn reassignment(
                         self_type,
                         build_config,
                         dead_code_graph,
-                        dependency_graph,
                         mode: Mode::NonAbi,
                         opts
                     }),
@@ -1114,7 +1032,6 @@ fn reassignment(
                     self_type,
                     build_config,
                     dead_code_graph,
-                    dependency_graph,
                     mode: Mode::NonAbi,
                     opts,
                 }),
@@ -1220,7 +1137,6 @@ fn type_check_trait_methods(
     self_type: TypeId,
     build_config: &BuildConfig,
     dead_code_graph: &mut ControlFlowGraph,
-    dependency_graph: &mut HashMap<String, HashSet<String>>,
 ) -> CompileResult<Vec<TypedFunctionDeclaration>> {
     let mut warnings = vec![];
     let mut errors = vec![];
@@ -1358,7 +1274,6 @@ fn type_check_trait_methods(
                 self_type,
                 build_config,
                 dead_code_graph,
-                dependency_graph,
                 mode: Mode::NonAbi,
                 opts: TCOpts { purity }
             }),

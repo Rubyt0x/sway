@@ -1,3 +1,4 @@
+use anyhow::{bail, Result};
 use forc::test::{
     forc_abi_json, forc_build, forc_deploy, forc_run, BuildCommand, DeployCommand, JsonAbiCommand,
     RunCommand,
@@ -24,13 +25,8 @@ pub(crate) fn deploy_contract(file_name: &str) -> ContractId {
                 manifest_dir, file_name
             )),
             use_ir,
-            print_finalized_asm: false,
-            print_intermediate_asm: false,
-            print_ir: false,
-            binary_outfile: None,
-            debug_outfile: None,
-            offline_mode: false,
             silent_mode: !verbose,
+            ..Default::default()
         }))
         .unwrap()
 }
@@ -49,23 +45,15 @@ pub(crate) fn runs_on_node(file_name: &str, contract_ids: &[fuel_tx::ContractId]
     let (verbose, use_ir) = get_test_config_from_env();
 
     let command = RunCommand {
-        data: None,
         path: Some(format!(
             "{}/src/e2e_vm_tests/test_programs/{}",
             manifest_dir, file_name
         )),
-        dry_run: false,
         node_url: "127.0.0.1:4000".into(),
-        kill_node: false,
         use_ir,
-        binary_outfile: None,
-        debug_outfile: None,
-        print_finalized_asm: false,
-        print_intermediate_asm: false,
-        print_ir: false,
         silent_mode: !verbose,
-        pretty_print: false,
         contract: Some(contracts),
+        ..Default::default()
     };
     tokio::runtime::Runtime::new()
         .unwrap()
@@ -116,7 +104,7 @@ pub(crate) fn does_not_compile(file_name: &str) {
 
 /// Returns `true` if a file compiled without any errors or warnings,
 /// and `false` if it did not.
-pub(crate) fn compile_to_bytes(file_name: &str) -> Result<Vec<u8>, String> {
+pub(crate) fn compile_to_bytes(file_name: &str) -> Result<Vec<u8>> {
     println!(" Compiling {}", file_name);
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
     let (verbose, use_ir) = get_test_config_from_env();
@@ -126,17 +114,13 @@ pub(crate) fn compile_to_bytes(file_name: &str) -> Result<Vec<u8>, String> {
             manifest_dir, file_name
         )),
         use_ir,
-        print_finalized_asm: false,
-        print_intermediate_asm: false,
-        print_ir: false,
-        binary_outfile: None,
-        debug_outfile: None,
-        offline_mode: false,
         silent_mode: !verbose,
+        ..Default::default()
     })
+    .map(|compiled| compiled.bytecode)
 }
 
-pub(crate) fn test_json_abi(file_name: &str) -> Result<(), String> {
+pub(crate) fn test_json_abi(file_name: &str) -> Result<()> {
     let _script = compile_to_json_abi(file_name)?;
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
     let oracle_path = format!(
@@ -148,22 +132,22 @@ pub(crate) fn test_json_abi(file_name: &str) -> Result<(), String> {
         manifest_dir, file_name, "json_abi_output.json"
     );
     if fs::metadata(oracle_path.clone()).is_err() {
-        return Err("JSON ABI oracle file does not exist for this test.".to_string());
+        bail!("JSON ABI oracle file does not exist for this test.");
     }
     if fs::metadata(output_path.clone()).is_err() {
-        return Err("JSON ABI output file does not exist for this test.".to_string());
+        bail!("JSON ABI output file does not exist for this test.");
     }
     let oracle_contents =
         fs::read_to_string(oracle_path).expect("Something went wrong reading the file.");
     let output_contents =
         fs::read_to_string(output_path).expect("Something went wrong reading the file.");
     if oracle_contents != output_contents {
-        return Err("Mismatched ABI JSON output.".to_string());
+        bail!("Mismatched ABI JSON output.");
     }
     Ok(())
 }
 
-fn compile_to_json_abi(file_name: &str) -> Result<Value, String> {
+fn compile_to_json_abi(file_name: &str) -> Result<Value> {
     println!("   ABI gen {}", file_name);
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
     forc_abi_json::build(JsonAbiCommand {
@@ -175,8 +159,8 @@ fn compile_to_json_abi(file_name: &str) -> Result<Value, String> {
             "{}/src/e2e_vm_tests/test_programs/{}/{}",
             manifest_dir, file_name, "json_abi_output.json"
         )),
-        offline_mode: false,
         silent_mode: true,
+        ..Default::default()
     })
 }
 

@@ -122,6 +122,7 @@ impl Namespace {
         let trait_name = CallPath {
             suffix: trait_name.suffix,
             prefixes: new_prefixes,
+            is_absolute: trait_name.is_absolute,
         };
         if self
             .implemented_traits

@@ -1,13 +1,16 @@
-use structopt::StructOpt;
+use anyhow::Result;
+use clap::Parser;
 
 mod commands;
 use self::commands::{
-    addr2line, build, deploy, explorer, format, init, json_abi, lsp, parse_bytecode, run, test,
-    update,
+    addr2line, build, clean, completions, deploy, explorer, format, init, json_abi, lsp,
+    parse_bytecode, run, test, update,
 };
 
 use addr2line::Command as Addr2LineCommand;
 pub use build::Command as BuildCommand;
+pub use clean::Command as CleanCommand;
+pub use completions::Command as CompletionsCommand;
 pub use deploy::Command as DeployCommand;
 pub use explorer::Command as ExplorerCommand;
 pub use format::Command as FormatCommand;
@@ -19,22 +22,25 @@ pub use run::Command as RunCommand;
 use test::Command as TestCommand;
 pub use update::Command as UpdateCommand;
 
-#[derive(Debug, StructOpt)]
-#[structopt(name = "forc", about = "Fuel Orchestrator")]
+#[derive(Debug, Parser)]
+#[clap(name = "forc", about = "Fuel Orchestrator")]
 struct Opt {
     /// the command to run
-    #[structopt(subcommand)]
+    #[clap(subcommand)]
     command: Forc,
 }
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 enum Forc {
-    #[structopt(name = "addr2line")]
+    #[clap(name = "addr2line")]
     Addr2Line(Addr2LineCommand),
     Build(BuildCommand),
+    Clean(CleanCommand),
+    #[clap(after_help = completions::COMPLETIONS_HELP)]
+    Completions(CompletionsCommand),
     Deploy(DeployCommand),
     Explorer(ExplorerCommand),
-    #[structopt(name = "fmt")]
+    #[clap(name = "fmt")]
     Format(FormatCommand),
     Init(InitCommand),
     ParseBytecode(ParseBytecodeCommand),
@@ -45,11 +51,14 @@ enum Forc {
     Lsp(LspCommand),
 }
 
-pub(crate) async fn run_cli() -> Result<(), String> {
-    let opt = Opt::from_args();
+pub(crate) async fn run_cli() -> Result<()> {
+    let opt = Opt::parse();
+
     match opt.command {
         Forc::Addr2Line(command) => addr2line::exec(command),
         Forc::Build(command) => build::exec(command),
+        Forc::Clean(command) => clean::exec(command),
+        Forc::Completions(command) => completions::exec(command),
         Forc::Deploy(command) => deploy::exec(command).await,
         Forc::Explorer(command) => explorer::exec(command).await,
         Forc::Format(command) => format::exec(command),

@@ -6,22 +6,19 @@
 //!
 //! It is passed around as a mutable reference to many of the Sway-IR APIs.
 
-use std::collections::HashMap;
-
 use generational_arena::Arena;
 
 use crate::{
     asm::AsmBlockContent,
     block::BlockContent,
     function::FunctionContent,
-    irtype::{AbiInstanceContent, Aggregate, AggregateContent},
+    irtype::{AbiInstanceContent, AggregateContent},
+    metadata::Metadatum,
     module::ModuleContent,
     module::ModuleIterator,
     pointer::PointerContent,
     value::ValueContent,
 };
-
-use sway_types::state::StateIndex;
 
 /// The main IR context handle.
 ///
@@ -37,52 +34,16 @@ pub struct Context {
     pub aggregates: Arena<AggregateContent>,
     pub abi_instances: Arena<AbiInstanceContent>,
     pub asm_blocks: Arena<AsmBlockContent>,
-    pub(super) aggregate_names: HashMap<String, Aggregate>,
-    aggregate_symbols: HashMap<Aggregate, HashMap<String, u64>>,
+
+    pub metadata: Arena<Metadatum>,
 
     next_unique_sym_tag: u64,
-    //    storage_slots: Vec<StorageSlot>,
 }
-
-/*
-pub struct StorageSlot {
-    field_name: Ident,
-    slot: StateIndex,
-}*/
 
 impl Context {
     /// Return an interator for every module in this context.
     pub fn module_iter(&self) -> ModuleIterator {
         ModuleIterator::new(self)
-    }
-
-    /// Add aggregate (struct) field names and their indicies to the context.
-    ///
-    /// Used to symbolically cross-reference the index to aggregate fields by
-    /// [`Context::get_aggregate_index`].
-    pub fn add_aggregate_symbols(
-        &mut self,
-        aggregate: Aggregate,
-        symbols: HashMap<String, u64>,
-    ) -> Result<(), String> {
-        match self.aggregate_symbols.insert(aggregate, symbols) {
-            None => Ok(()),
-            Some(_) => Err("Aggregate symbols were overwritten/shadowed.".into()),
-        }
-    }
-
-    /// Return a named aggregate, if known.
-    pub fn get_aggregate_by_name(&self, name: &str) -> Option<Aggregate> {
-        self.aggregate_names.get(name).copied()
-    }
-
-    /// Get the field index within an aggregate (struct) by name, if known.
-    ///
-    /// The field names must be registered already using [`Context::add_aggregate_symbols`].
-    pub fn get_aggregate_index(&self, aggregate: &Aggregate, field_name: &str) -> Option<u64> {
-        self.aggregate_symbols
-            .get(aggregate)
-            .and_then(|idx_map| idx_map.get(field_name).copied())
     }
 
     /// Get a globally unique symbol.

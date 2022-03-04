@@ -1,8 +1,9 @@
+use anyhow::{anyhow, Result};
+use clap::Parser;
 use std::collections::VecDeque;
 use std::fs::{self, File};
 use std::io::{self, prelude::*, BufReader};
 use std::path::{Path, PathBuf};
-use structopt::{self, StructOpt};
 
 use annotate_snippets::{
     display_list::{DisplayList, FormatOptions},
@@ -12,30 +13,31 @@ use annotate_snippets::{
 use sway_core::source_map::{LocationRange, SourceMap};
 
 /// Show location and context of an opcode address in its source file
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 pub(crate) struct Command {
     /// Where to search for the project root
-    #[structopt(short = "s", long, default_value = ".")]
+    #[clap(short = 's', long, default_value = ".")]
     pub search_dir: PathBuf,
     /// Source file mapping in JSON format
-    #[structopt(short = "g", long)]
+    #[clap(short = 'g', long)]
     pub sourcemap_path: PathBuf,
     /// How many lines of context to show
-    #[structopt(short, long, default_value = "2")]
+    #[clap(short, long, default_value = "2")]
     pub context: usize,
     /// Opcode index
-    #[structopt(short = "i", long)]
+    #[clap(short = 'i', long)]
     pub opcode_index: usize,
 }
 
-pub(crate) fn exec(command: Command) -> Result<(), String> {
+pub(crate) fn exec(command: Command) -> Result<()> {
     let contents = fs::read(&command.sourcemap_path)
-        .map_err(|err| format!("{:?}: could not read: {:?}", command.sourcemap_path, err))?;
+        .map_err(|err| anyhow!("{:?}: could not read: {:?}", command.sourcemap_path, err))?;
 
     let sm: SourceMap = serde_json::from_slice(&contents).map_err(|err| {
-        format!(
+        anyhow!(
             "{:?}: invalid source map json: {}",
-            command.sourcemap_path, err
+            command.sourcemap_path,
+            err
         )
     })?;
 
@@ -45,7 +47,7 @@ pub(crate) fn exec(command: Command) -> Result<(), String> {
         }
 
         let rr = read_range(&path, range, command.context)
-            .map_err(|err| format!("{:?}: could not read: {:?}", path, err))?;
+            .map_err(|err| anyhow!("{:?}: could not read: {:?}", path, err))?;
 
         let path_str = format!("{:?}", path);
         let snippet = Snippet {
@@ -71,7 +73,7 @@ pub(crate) fn exec(command: Command) -> Result<(), String> {
 
         Ok(())
     } else {
-        Err("Address did not map to any source code location".to_owned())
+        Err(anyhow!("Address did not map to any source code location"))
     }
 }
 

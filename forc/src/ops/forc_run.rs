@@ -47,14 +47,16 @@ pub async fn run(command: RunCommand) -> Result<(), CliError> {
                             debug_outfile: command.debug_outfile,
                             offline_mode: false,
                             silent_mode: command.silent_mode,
+                            output_directory: command.output_directory,
+                            minify_json_abi: command.minify_json_abi,
                         };
 
-                        let compiled_script = forc_build::build(build_command)?;
+                        let compiled = forc_build::build(build_command)?;
                         let contracts = command.contract.unwrap_or_default();
                         let (inputs, outputs) = get_tx_inputs_and_outputs(contracts);
 
                         let tx = create_tx_with_script_and_data(
-                            compiled_script,
+                            compiled.bytecode,
                             script_data,
                             inputs,
                             outputs,

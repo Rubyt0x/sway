@@ -1,8 +1,8 @@
 [package]
 name = "sway-types"
-version = "0.4.0"
+version = "0.5.0"
 authors = ["Fuel Labs <contact@fuel.sh>"]
-edition = "2018"
+edition = "2021"
 homepage = "https://fuel.network/"
 license = "Apache-2.0"
 repository = "https://github.com/FuelLabs/sway"
@@ -14,4 +14,4 @@ fuel-tx = "0.5"
 pest = { version = "3.0.4", package = "fuel-pest" }
 pest_derive = { version = "3.0.4", package = "fuel-pest_derive" }
 serde = { version = "1.0", features = ["derive"] }
-sway-utils = { version = "0.4.0", path = "../sway-utils" }
+sway-utils = { version = "0.5.0", path = "../sway-utils" }

@@ -92,6 +92,9 @@ pub(crate) enum TypedExpressionVariant {
         span: Span,
     },
     StorageAccess(TypeCheckedStorageAccess),
+    SizeOf {
+        variant: SizeOfVariant,
+    },
 }
 
 /// Whether a storage access is _writing_, i.e. _storing_; or _reading_, i.e. _loading_.
@@ -138,6 +141,12 @@ impl TypeCheckedStorageAccess {
             store_or_load: StoreOrLoad::Load,
         }
     }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) enum SizeOfVariant {
+    Type(TypeId),
+    Val(Box<TypedExpression>),
 }
 
 #[derive(Clone, Debug)]
@@ -254,6 +263,13 @@ impl TypedExpressionVariant {
             TypedExpressionVariant::StorageAccess(access) => match access.field_name() {
                 Some(name) => format!("storage field {} access", name.as_str()),
                 None => "storage struct access".into(),
+                },
+            
+            TypedExpressionVariant::SizeOf { variant } => match variant {
+                SizeOfVariant::Val(exp) => format!("size_of_val({:?})", exp.pretty_print()),
+                SizeOfVariant::Type(type_name) => {
+                    format!("size_of({:?})", type_name.friendly_type_str())
+                }
             },
         }
     }
@@ -371,6 +387,10 @@ impl TypedExpressionVariant {
             AbiCast { address, .. } => address.copy_types(type_mapping),
             // storage is never generic and cannot be monomorphized
             StorageAccess { .. } => (),
+            SizeOf { variant } => match variant {
+                SizeOfVariant::Type(_) => (),
+                SizeOfVariant::Val(exp) => exp.copy_types(type_mapping),
+            },
         }
     }
 }
