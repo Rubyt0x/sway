@@ -160,6 +160,7 @@ pub enum Expression {
     /// into contracts.
     StorageAccess {
         field_name: Ident,
+        span: Span,
     },
     SizeOfVal {
         exp: Box<Expression>,

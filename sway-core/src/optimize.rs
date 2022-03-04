@@ -680,7 +680,7 @@ impl FnCompiler {
                 elem_to_access_span: span,
                 resolved_type_of_parent: tuple_type,
             } => self.compile_tuple_elem_expr( context, *prefix, tuple_type, idx, span),
-            TypedExpressionVariant::StorageAccess(access) => self.compile_storage_access(context, access),
+            TypedExpressionVariant::StorageAccess(access) => todo!("storage API in IR"),
             TypedExpressionVariant::AbiCast { span, .. } => {
                 let span_md_idx = MetadataIndex::from_span(context, &span);
                 Ok(Constant::get_unit(context, span_md_idx))

@@ -289,6 +289,7 @@ impl TypedExpression {
                     mode: Default::default(),
                     help_text: Default::default(),
                 },
+                &expr_span,
             ),
             Expression::SizeOfVal { exp, span } => Self::type_check_size_of_val(
                 TypeCheckArguments {
@@ -303,7 +304,6 @@ impl TypedExpression {
                     mode: Default::default(),
                     help_text: Default::default(),
                 },
-                &expr_span,
                 span,
             ),
             Expression::SizeOfType {
